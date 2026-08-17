@@ -1,0 +1,8 @@
+{
+  "name": "Crested Gecko Care",
+  "description": "Mobile web app for tracking crested gecko weight, feeding, and environment.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

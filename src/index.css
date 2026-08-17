@@ -1,0 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  html {
+    font-family: 'Jua', sans-serif;
+    background-color: #FAF5E8;
+    color: #5C4D43;
+  }
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .cute-shadow {
+    box-shadow: 0 4px 0px rgba(0,0,0,0.1);
+  }
+  
+  .cute-shadow-active {
+    box-shadow: 0 0px 0px rgba(0,0,0,0.1);
+    transform: translateY(4px);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
