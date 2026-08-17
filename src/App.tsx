@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getGeckos, getHistory, addFeeding, addMetric, addGecko } from './api';
+import { getGeckos, getHistory, addFeeding, addMetric, addGecko, deleteHistoryItem } from './api';
 import { Gecko, HistoryItem, Metric, Feeding } from './types';
 import { format, differenceInDays, differenceInMonths, parseISO } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { Plus, Scale, Droplets, Thermometer, Bug, Leaf, Activity, History, ChevronDown, X } from 'lucide-react';
+import { Plus, Scale, Droplets, Thermometer, Bug, Leaf, Activity, History, ChevronDown, X, Trash2 } from 'lucide-react';
 import { Card, Button, Input, Label, Select } from './components/ui';
 import { cn } from './lib/utils';
 
@@ -46,6 +46,7 @@ export default function App() {
   const [isMetricModalOpen, setMetricModalOpen] = useState(false);
   const [isAddGeckoModalOpen, setAddGeckoModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{id: string, type: 'metric' | 'feeding'} | null>(null);
 
   useEffect(() => {
     loadGeckos();
@@ -89,6 +90,23 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const handleDeleteHistory = (id: string, type: 'metric' | 'feeding') => {
+    setItemToDelete({ id, type });
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      await deleteHistoryItem(itemToDelete.id, itemToDelete.type);
+      setHistory(prev => prev.filter(item => item.id !== itemToDelete.id));
+      showToast('기록이 삭제되었습니다. 🗑️');
+    } catch (e) {
+      showToast('삭제에 실패했습니다.');
+    } finally {
+      setItemToDelete(null);
+    }
+  };
+
   const activeGecko = (Array.isArray(geckos) ? geckos : []).find(g => g.id === activeGeckoId);
   
   // Computed values
@@ -125,8 +143,8 @@ export default function App() {
               onChange={(e) => setActiveGeckoId(e.target.value)}
               className="appearance-none bg-transparent font-bold text-2xl pr-8 py-1 focus:outline-none cursor-pointer text-[#5C4D43]"
             >
-              {(Array.isArray(geckos) ? geckos : []).map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
+              {(Array.isArray(geckos) ? geckos : []).map((g, idx) => (
+                <option key={g.id || `gecko-${idx}`} value={g.id || ''}>{g.name || '알 수 없는 개체'}</option>
               ))}
             </select>
             <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 text-[#A89E95] pointer-events-none" size={24} />
@@ -263,10 +281,20 @@ export default function App() {
                   <div className="relative border-l-4 border-[#F2EBE1] ml-4 space-y-6 pb-4">
                     {(Array.isArray(history) ? history : []).map((item, idx) => {
                       const isFeeding = item.type === 'feeding';
-                      const date = parseISO(isFeeding ? item.fed_at : item.recorded_at);
+                      const rawDateString = isFeeding ? (item as Feeding).fed_at : (item as Metric).recorded_at;
+                      let date;
+                      try {
+                        date = rawDateString ? parseISO(rawDateString) : new Date();
+                        // Validate date
+                        if (isNaN(date.getTime())) {
+                          date = new Date(); // Fallback to current if invalid
+                        }
+                      } catch (e) {
+                        date = new Date();
+                      }
                       
                       return (
-                        <div key={item.id} className="relative pl-8">
+                        <div key={item.id || `history-${idx}`} className="relative pl-8">
                           <div className={cn(
                             "absolute -left-[18px] top-4 text-3xl bg-[#FAF5E8] rounded-full p-1"
                           )}>
@@ -281,6 +309,13 @@ export default function App() {
                                 </span>
                                 <span className="text-sm text-[#A89E95]">{format(date, 'yyyy년 MM월 dd일 HH:mm')}</span>
                               </div>
+                              <button
+                                onClick={() => handleDeleteHistory(item.id, item.type as 'metric' | 'feeding')}
+                                className="p-2 text-[#A89E95] hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                title="기록 삭제"
+                              >
+                                <Trash2 size={20} />
+                              </button>
                             </div>
                             
                             {isFeeding ? (
@@ -415,6 +450,20 @@ export default function App() {
           setAddGeckoModalOpen(false);
         }}
       />
+
+      <Modal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} title="기록 삭제">
+        <div className="space-y-6">
+          <p className="text-[#5C4D43] text-lg text-center mt-4">정말로 이 기록을 삭제하시겠습니까?</p>
+          <div className="flex gap-4">
+            <Button variant="outline" className="flex-1" onClick={() => setItemToDelete(null)}>
+              취소
+            </Button>
+            <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white border-red-600" onClick={confirmDelete}>
+              삭제하기
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

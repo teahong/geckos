@@ -1,7 +1,7 @@
 import { Gecko, HistoryItem, Metric, Feeding } from './types';
 
 // The URL for the Google Apps Script backend
-const API_URL = import.meta.env.VITE_API_URL || 'https://script.google.com/macros/s/AKfycbwgFyE01ZnKR8s0rf6pjvi-Qkc0yvloXFc4D9SaF1R_xNWit3u6wNU2191F4xjmkaiz/exec';
+const API_URL = import.meta.env.VITE_API_URL || 'https://script.google.com/macros/s/AKfycbwgNYe11qzTT4zuxf5YqhFqhF6hafUYre0u31nD7zV_Vp87QVjDyhcUZNx-Rs-fthg4/exec';
 const USE_MOCK = false; // Set to true to use mock data for preview purposes
 
 // --- Mock Data ---
@@ -50,7 +50,7 @@ export async function getGeckos(): Promise<Gecko[]> {
     return [...mockGeckos];
   }
   try {
-    const res = await fetch(`${API_URL}?action=getGeckos`);
+    const res = await fetch(`${API_URL}?action=getGeckos&t=${Date.now()}`, { redirect: 'follow' });
     const data = await res.json();
     return Array.isArray(data) ? data : (data.data || []);
   } catch (err) {
@@ -70,7 +70,7 @@ export async function getHistory(geckoId: string): Promise<HistoryItem[]> {
     });
   }
   try {
-    const res = await fetch(`${API_URL}?action=getHistory&gecko_id=${geckoId}`);
+    const res = await fetch(`${API_URL}?action=getHistory&gecko_id=${geckoId}&t=${Date.now()}`, { redirect: 'follow' });
     const data = await res.json();
     return Array.isArray(data) ? data : (data.data || []);
   } catch (err) {
@@ -141,6 +141,28 @@ export async function addFeeding(data: Omit<Feeding, 'id' | 'type'>): Promise<Fe
     return result.data || result;
   } catch (err) {
     console.error('Failed to add feeding:', err);
+    throw err;
+  }
+}
+
+export async function deleteHistoryItem(id: string, type: 'metric' | 'feeding'): Promise<boolean> {
+  if (USE_MOCK) {
+    await delay(500);
+    for (const geckoId in mockHistory) {
+      mockHistory[geckoId] = mockHistory[geckoId].filter(h => h.id !== id);
+    }
+    return true;
+  }
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteHistoryItem', data: { id, type } }),
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    });
+    const result = await res.json();
+    return result.status === 'success';
+  } catch (err) {
+    console.error('Failed to delete history item:', err);
     throw err;
   }
 }
