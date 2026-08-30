@@ -3,7 +3,7 @@ import { getGeckos, getHistory, addFeeding, addMetric, addGecko, deleteHistoryIt
 import { Gecko, HistoryItem, Metric, Feeding } from './types';
 import { format, differenceInDays, differenceInMonths, parseISO } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { Plus, Scale, Droplets, Thermometer, Bug, Leaf, Activity, History, ChevronDown, X, Trash2 } from 'lucide-react';
+import { Plus, Scale, Droplets, Thermometer, Bug, Leaf, Activity, History, ChevronDown, X, Trash2, Bell } from 'lucide-react';
 import { Card, Button, Input, Label, Select } from './components/ui';
 import { cn } from './lib/utils';
 
@@ -55,11 +55,6 @@ export default function App() {
 
   // Notifications logic
   useEffect(() => {
-    // Request permission if not granted
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-
     const checkTime = () => {
       const now = new Date();
       const day = now.getDay(); // 0 is Sunday
@@ -100,6 +95,19 @@ export default function App() {
       loadHistory(activeGeckoId);
     }
   }, [activeGeckoId]);
+
+  const requestNotificationPermission = async () => {
+    if (!("Notification" in window)) {
+      showToast('이 브라우저는 알림 기능을 지원하지 않습니다.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      showToast('알림 권한이 허용되었습니다! 🔔');
+    } else {
+      showToast('알림 권한이 거부되었습니다.');
+    }
+  };
 
   const loadGeckos = async () => {
     setLoading(true);
@@ -193,9 +201,14 @@ export default function App() {
             </select>
             <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 text-[#A89E95] pointer-events-none" size={24} />
           </div>
-          <button onClick={() => setAddGeckoModalOpen(true)} className="p-3 rounded-[16px] bg-white border-2 border-[#F2EBE1] text-[#82C881] cute-shadow active:translate-y-[2px] active:shadow-none transition-all">
-            <Plus size={24} />
-          </button>
+          <div className="flex gap-2">
+            <button onClick={requestNotificationPermission} className="p-3 rounded-[16px] bg-white border-2 border-[#F2EBE1] text-[#FFB067] cute-shadow active:translate-y-[2px] active:shadow-none transition-all" title="알림 권한 설정">
+              <Bell size={24} />
+            </button>
+            <button onClick={() => setAddGeckoModalOpen(true)} className="p-3 rounded-[16px] bg-white border-2 border-[#F2EBE1] text-[#82C881] cute-shadow active:translate-y-[2px] active:shadow-none transition-all" title="새 개체 등록">
+              <Plus size={24} />
+            </button>
+          </div>
         </div>
       </header>
 
