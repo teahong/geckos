@@ -1,0 +1,21 @@
+{
+  "name": "크레스티드 게코 다이어리",
+  "short_name": "게코 다이어리",
+  "description": "우리 집 크레스티드 게코의 성장 기록과 피딩 일지를 꼼꼼하게 기록해보세요!",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF5E8",
+  "theme_color": "#82C881",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
