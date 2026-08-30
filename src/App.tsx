@@ -20,14 +20,16 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose:
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#5C4D43]/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md rounded-[32px] border-4 border-[#F2EBE1] p-6 shadow-xl animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95">
-        <div className="flex justify-between items-center mb-6">
+      <div className="bg-white w-full max-w-md max-h-[85dvh] flex flex-col rounded-[32px] border-4 border-[#F2EBE1] p-6 shadow-xl animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95">
+        <div className="flex justify-between items-center mb-6 shrink-0">
           <h2 className="text-2xl font-bold text-[#5C4D43]">{title}</h2>
-          <button onClick={onClose} className="p-2 bg-[#FAF5E8] rounded-full text-[#A89E95] hover:text-[#5C4D43] transition-colors">
+          <button type="button" onClick={onClose} className="p-2 bg-[#FAF5E8] rounded-full text-[#A89E95] hover:text-[#5C4D43] transition-colors">
             <X size={24} />
           </button>
         </div>
-        {children}
+        <div className="overflow-y-auto -mx-2 px-2 pb-2">
+          {children}
+        </div>
       </div>
     </div>
   );
