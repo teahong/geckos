@@ -261,7 +261,7 @@ export default function App() {
                             <Tooltip 
                               contentStyle={{ borderRadius: '20px', border: '4px solid #F2EBE1', fontFamily: 'Jua', backgroundColor: '#FAF5E8', color: '#5C4D43' }}
                             />
-                            <Area type="monotone" dataKey="weight" stroke="#82C881" strokeWidth={4} fillOpacity={1} fill="url(#colorWeight)" activeDot={{ r: 8, fill: '#FFB067', stroke: '#fff', strokeWidth: 3 }} />
+                            <Area type="monotone" dataKey="weight" name="체중" stroke="#82C881" strokeWidth={4} fillOpacity={1} fill="url(#colorWeight)" activeDot={{ r: 8, fill: '#FFB067', stroke: '#fff', strokeWidth: 3 }} />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
@@ -528,7 +528,7 @@ function AddFeedingModal({ isOpen, onClose, geckoId, onSuccess }: any) {
             <span className="text-sm text-[#A89E95]">영양제 첨가 여부</span>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" name="is_dusted" className="sr-only peer" defaultChecked />
+            <input type="checkbox" name="is_dusted" className="sr-only peer" />
             <div className="w-14 h-8 bg-[#E5DCD0] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#FFB067]"></div>
           </label>
         </div>
