@@ -1,0 +1,661 @@
+     1	import React, { useState, useEffect, useMemo } from 'react';
+     2	import { getGeckos, getHistory, addFeeding, addMetric, addGecko, deleteHistoryItem } from './api';
+     3	import { Gecko, HistoryItem, Metric, Feeding } from './types';
+     4	import { format, differenceInDays, differenceInMonths, parseISO } from 'date-fns';
+     5	import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+     6	import { Plus, Scale, Droplets, Thermometer, Bug, Leaf, Activity, History, ChevronDown, X, Trash2 } from 'lucide-react';
+     7	import { Card, Button, Input, Label, Select } from './components/ui';
+     8	import { cn } from './lib/utils';
+     9	
+    10	// --- Cute Speech Bubble Component ---
+    11	const SpeechBubble = ({ text, color = "bg-[#82C881]", textColor = "text-white" }: { text: string, color?: string, textColor?: string }) => (
+    12	  <div className={cn("relative px-4 py-2 rounded-[16px] text-sm font-bold inline-block animate-float cute-shadow z-10", color, textColor)}>
+    13	    {text}
+    14	    <div className={cn("absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 rotate-45", color)}></div>
+    15	  </div>
+    16	);
+    17	
+    18	// --- Modals ---
+    19	const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) => {
+    20	  if (!isOpen) return null;
+    21	  return (
+    22	    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#5C4D43]/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    23	      <div className="bg-white w-full max-w-md rounded-[32px] border-4 border-[#F2EBE1] p-6 shadow-xl animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95">
+    24	        <div className="flex justify-between items-center mb-6">
+    25	          <h2 className="text-2xl font-bold text-[#5C4D43]">{title}</h2>
+    26	          <button onClick={onClose} className="p-2 bg-[#FAF5E8] rounded-full text-[#A89E95] hover:text-[#5C4D43] transition-colors">
+    27	            <X size={24} />
+    28	          </button>
+    29	        </div>
+    30	        {children}
+    31	      </div>
+    32	    </div>
+    33	  );
+    34	};
+    35	
+    36	export default function App() {
+    37	  const [geckos, setGeckos] = useState<Gecko[]>([]);
+    38	  const [activeGeckoId, setActiveGeckoId] = useState<string | null>(null);
+    39	  const [history, setHistory] = useState<HistoryItem[]>([]);
+    40	  const [loading, setLoading] = useState(true);
+    41	  
+    42	  const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>('dashboard');
+    43	  
+    44	  // Modals state
+    45	  const [isFeedingModalOpen, setFeedingModalOpen] = useState(false);
+    46	  const [isMetricModalOpen, setMetricModalOpen] = useState(false);
+    47	  const [isAddGeckoModalOpen, setAddGeckoModalOpen] = useState(false);
+    48	  const [toast, setToast] = useState<string | null>(null);
+    49	  const [itemToDelete, setItemToDelete] = useState<{id: string, type: 'metric' | 'feeding'} | null>(null);
+    50	
+    51	  useEffect(() => {
+    52	    loadGeckos();
+    53	  }, []);
+    54	
+    55	  useEffect(() => {
+    56	    if (activeGeckoId) {
+    57	      loadHistory(activeGeckoId);
+    58	    }
+    59	  }, [activeGeckoId]);
+    60	
+    61	  const loadGeckos = async () => {
+    62	    setLoading(true);
+    63	    try {
+    64	      const data = await getGeckos();
+    65	      setGeckos(data);
+    66	      if (data.length > 0 && !activeGeckoId) {
+    67	        setActiveGeckoId(data[0].id);
+    68	      }
+    69	    } catch (e) {
+    70	      showToast('개체 정보를 불러오는데 실패했습니다.');
+    71	    } finally {
+    72	      setLoading(false);
+    73	    }
+    74	  };
+    75	
+    76	  const loadHistory = async (id: string) => {
+    77	    setLoading(true);
+    78	    try {
+    79	      const data = await getHistory(id);
+    80	      setHistory(data);
+    81	    } catch (e) {
+    82	      showToast('기록을 불러오는데 실패했습니다.');
+    83	    } finally {
+    84	      setLoading(false);
+    85	    }
+    86	  };
+    87	
+    88	  const showToast = (msg: string) => {
+    89	    setToast(msg);
+    90	    setTimeout(() => setToast(null), 3000);
+    91	  };
+    92	
+    93	  const handleDeleteHistory = (id: string, type: 'metric' | 'feeding') => {
+    94	    setItemToDelete({ id, type });
+    95	  };
+    96	
+    97	  const confirmDelete = async () => {
+    98	    if (!itemToDelete) return;
+    99	    try {
+   100	      await deleteHistoryItem(itemToDelete.id, itemToDelete.type);
+   101	      setHistory(prev => prev.filter(item => item.id !== itemToDelete.id));
+   102	      showToast('기록이 삭제되었습니다. 🗑️');
+   103	    } catch (e) {
+   104	      showToast('삭제에 실패했습니다.');
+   105	    } finally {
+   106	      setItemToDelete(null);
+   107	    }
+   108	  };
+   109	
+   110	  const activeGecko = (Array.isArray(geckos) ? geckos : []).find(g => g.id === activeGeckoId);
+   111	  
+   112	  // Computed values
+   113	  const metrics = (Array.isArray(history) ? history : []).filter(h => h.type === 'metric') as Metric[];
+   114	  const feedings = (Array.isArray(history) ? history : []).filter(h => h.type === 'feeding') as Feeding[];
+   115	  
+   116	  const latestMetric = metrics.length > 0 ? metrics[0] : null;
+   117	  const previousMetric = metrics.length > 1 ? metrics[1] : null;
+   118	  const weightDiff = latestMetric && previousMetric ? (latestMetric.weight - previousMetric.weight) : 0;
+   119	  
+   120	  const latestFeeding = feedings.length > 0 ? feedings[0] : null;
+   121	  const daysSinceLastFeeding = latestFeeding ? differenceInDays(new Date(), parseISO(latestFeeding.fed_at)) : null;
+   122	
+   123	  const ageInMonths = activeGecko ? differenceInMonths(new Date(), parseISO(activeGecko.birth_date)) : 0;
+   124	
+   125	  // Chart data
+   126	  const chartData = useMemo(() => {
+   127	    return [...metrics].reverse().map(m => ({
+   128	      date: format(parseISO(m.recorded_at), 'MM/dd'),
+   129	      weight: m.weight,
+   130	      temp: m.temperature,
+   131	      humidity: m.humidity
+   132	    }));
+   133	  }, [metrics]);
+   134	
+   135	  return (
+   136	    <div className="min-h-screen pb-32">
+   137	      {/* Header */}
+   138	      <header className="sticky top-0 z-30 bg-[#FAF5E8]/90 backdrop-blur-md px-4 py-4">
+   139	        <div className="max-w-3xl mx-auto flex items-center justify-between">
+   140	          <div className="relative group">
+   141	            <select
+   142	              value={activeGeckoId || ''}
+   143	              onChange={(e) => setActiveGeckoId(e.target.value)}
+   144	              className="appearance-none bg-transparent font-bold text-2xl pr-8 py-1 focus:outline-none cursor-pointer text-[#5C4D43]"
+   145	            >
+   146	              {(Array.isArray(geckos) ? geckos : []).map((g, idx) => (
+   147	                <option key={g.id || `gecko-${idx}`} value={g.id || ''}>{g.name || '알 수 없는 개체'}</option>
+   148	              ))}
+   149	            </select>
+   150	            <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 text-[#A89E95] pointer-events-none" size={24} />
+   151	          </div>
+   152	          <button onClick={() => setAddGeckoModalOpen(true)} className="p-3 rounded-[16px] bg-white border-2 border-[#F2EBE1] text-[#82C881] cute-shadow active:translate-y-[2px] active:shadow-none transition-all">
+   153	            <Plus size={24} />
+   154	          </button>
+   155	        </div>
+   156	      </header>
+   157	
+   158	      <main className="max-w-3xl mx-auto p-4 space-y-8">
+   159	        {loading && history.length === 0 ? (
+   160	          <div className="animate-pulse space-y-4">
+   161	            <div className="h-32 bg-[#F2EBE1] rounded-[28px]"></div>
+   162	            <div className="h-64 bg-[#F2EBE1] rounded-[28px]"></div>
+   163	          </div>
+   164	        ) : !activeGecko ? (
+   165	           <div className="text-center py-20">
+   166	             <div className="text-6xl mb-4 animate-bounce">🦎</div>
+   167	             <h2 className="text-2xl font-bold mb-2">개체를 등록해주세요</h2>
+   168	             <p className="text-[#A89E95] mb-6">아직 등록된 크레스티드 게코가 없습니다.</p>
+   169	             <Button onClick={() => setAddGeckoModalOpen(true)}>첫 개체 등록하기</Button>
+   170	           </div>
+   171	        ) : (
+   172	          <>
+   173	            {/* Dashboard Tab */}
+   174	            {activeTab === 'dashboard' && (
+   175	              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+   176	                <div className="flex items-center gap-2 text-base text-[#A89E95] px-2 font-medium">
+   177	                  <span>{activeGecko.gender === 'female' ? '암컷' : activeGecko.gender === 'male' ? '수컷' : '미구분'}</span>
+   178	                  <span>•</span>
+   179	                  <span>{activeGecko.has_tail ? '유미' : '무미'}</span>
+   180	                  <span>•</span>
+   181	                  <span>생후 {ageInMonths}개월</span>
+   182	                </div>
+   183	
+   184	                {/* Big Cards Area */}
+   185	                <div className="grid grid-cols-2 gap-4">
+   186	                  {/* Weight Card */}
+   187	                  <div className="relative pt-6">
+   188	                    <div className="absolute top-0 left-1/2 -translate-x-1/2 flex justify-center w-full">
+   189	                      <SpeechBubble text="오늘 몸무게는?" color="bg-[#FFB067]" />
+   190	                    </div>
+   191	                    <Card className="bg-[#FFF8EE] border-[#FFE1A8] h-full flex flex-col items-center justify-center text-center p-6 mt-4">
+   192	                      <div className="text-5xl mb-2">⚖️</div>
+   193	                      <div className="text-3xl font-bold mb-1 text-[#5C4D43]">{latestMetric?.weight || '-'} <span className="text-xl font-normal opacity-70">g</span></div>
+   194	                      {weightDiff !== 0 && (
+   195	                        <span className={cn("text-sm font-medium px-3 py-1 rounded-full mb-2", weightDiff > 0 ? "bg-[#FFE1A8] text-[#D98C46]" : "bg-[#F2EBE1] text-[#A89E95]")}>
+   196	                          {weightDiff > 0 ? '+' : ''}{weightDiff.toFixed(1)}g
+   197	                        </span>
+   198	                      )}
+   199	                      <div className="text-[#A89E95] text-base">최근 체중</div>
+   200	                    </Card>
+   201	                  </div>
+   202	
+   203	                  {/* Feeding Card */}
+   204	                  <div className="relative pt-6">
+   205	                    <div className="absolute top-0 left-1/2 -translate-x-1/2 flex justify-center w-full">
+   206	                      <SpeechBubble text="밥 맛있게 먹었어!" />
+   207	                    </div>
+   208	                    <Card className="bg-[#F2FAF2] border-[#C2E5C2] h-full flex flex-col items-center justify-center text-center p-6 mt-4">
+   209	                      <div className="text-5xl mb-2">🦗</div>
+   210	                      <div className="text-2xl font-bold mb-1 text-[#5C4D43]">{latestFeeding ? format(parseISO(latestFeeding.fed_at), 'MM/dd HH:mm') : '-'}</div>
+   211	                      {daysSinceLastFeeding !== null && (
+   212	                        <span className="text-sm font-medium px-3 py-1 rounded-full bg-[#C2E5C2] text-[#5B8F5B] mb-2">
+   213	                          D+{daysSinceLastFeeding}
+   214	                        </span>
+   215	                      )}
+   216	                      <div className="text-[#A89E95] text-base">마지막 피딩</div>
+   217	                    </Card>
+   218	                  </div>
+   219	                </div>
+   220	
+   221	                {/* Env Cards */}
+   222	                <div className="relative pt-8">
+   223	                  <div className="absolute top-2 left-6">
+   224	                     <SpeechBubble text="온·습도 환경 모니터링" color="bg-[#66B2FF]" />
+   225	                  </div>
+   226	                  <Card className="bg-white border-[#C2D9FF] p-6 mt-2">
+   227	                    <div className="grid grid-cols-2 gap-4 divide-x-2 divide-[#F2EBE1]">
+   228	                      <div className="flex flex-col items-center text-center px-2">
+   229	                        <div className="text-4xl mb-2">🌡️</div>
+   230	                        <div className="text-2xl font-bold text-[#5C4D43]">{latestMetric?.temperature || '-'}°C</div>
+   231	                        <div className="text-sm text-[#A89E95] mt-1">적정 22~26°C</div>
+   232	                      </div>
+   233	                      <div className="flex flex-col items-center text-center px-2">
+   234	                        <div className="text-4xl mb-2">💧</div>
+   235	                        <div className="text-2xl font-bold text-[#5C4D43]">{latestMetric?.humidity || '-'}%</div>
+   236	                        <div className="text-sm text-[#A89E95] mt-1">적정 60~80%</div>
+   237	                      </div>
+   238	                    </div>
+   239	                  </Card>
+   240	                </div>
+   241	
+   242	                {/* Charts */}
+   243	                {chartData.length > 0 && (
+   244	                  <div className="space-y-6">
+   245	                    <Card className="p-4 sm:p-6">
+   246	                      <div className="mb-4">
+   247	                        <h3 className="font-bold text-xl flex items-center gap-2">📈 체중 성장 추이</h3>
+   248	                      </div>
+   249	                      <div className="h-64 w-full">
+   250	                        <ResponsiveContainer width="100%" height="100%">
+   251	                          <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+   252	                            <defs>
+   253	                              <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
+   254	                                <stop offset="5%" stopColor="#82C881" stopOpacity={0.5}/>
+   255	                                <stop offset="95%" stopColor="#82C881" stopOpacity={0}/>
+   256	                              </linearGradient>
+   257	                            </defs>
+   258	                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F2EBE1" />
+   259	                            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 14, fill: '#A89E95', fontFamily: 'Jua'}} />
+   260	                            <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} tick={{fontSize: 14, fill: '#A89E95', fontFamily: 'Jua'}} />
+   261	                            <Tooltip 
+   262	                              contentStyle={{ borderRadius: '20px', border: '4px solid #F2EBE1', fontFamily: 'Jua', backgroundColor: '#FAF5E8', color: '#5C4D43' }}
+   263	                            />
+   264	                            <Area type="monotone" dataKey="weight" name="체중" stroke="#82C881" strokeWidth={4} fillOpacity={1} fill="url(#colorWeight)" activeDot={{ r: 8, fill: '#FFB067', stroke: '#fff', strokeWidth: 3 }} />
+   265	                          </AreaChart>
+   266	                        </ResponsiveContainer>
+   267	                      </div>
+   268	                    </Card>
+   269	                  </div>
+   270	                )}
+   271	              </div>
+   272	            )}
+   273	
+   274	            {/* History Tab */}
+   275	            {activeTab === 'history' && (
+   276	              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+   277	                <h3 className="font-bold px-2 mb-4 text-2xl">📝 전체 기록</h3>
+   278	                {history.length === 0 ? (
+   279	                  <div className="text-center py-10 text-[#A89E95] text-lg">기록이 없습니다.</div>
+   280	                ) : (
+   281	                  <div className="relative border-l-4 border-[#F2EBE1] ml-4 space-y-6 pb-4">
+   282	                    {(Array.isArray(history) ? history : []).map((item, idx) => {
+   283	                      const isFeeding = item.type === 'feeding';
+   284	                      const rawDateString = isFeeding ? (item as Feeding).fed_at : (item as Metric).recorded_at;
+   285	                      let date;
+   286	                      try {
+   287	                        date = rawDateString ? parseISO(rawDateString) : new Date();
+   288	                        // Validate date
+   289	                        if (isNaN(date.getTime())) {
+   290	                          date = new Date(); // Fallback to current if invalid
+   291	                        }
+   292	                      } catch (e) {
+   293	                        date = new Date();
+   294	                      }
+   295	                      
+   296	                      return (
+   297	                        <div key={item.id || `history-${idx}`} className="relative pl-8">
+   298	                          <div className={cn(
+   299	                            "absolute -left-[18px] top-4 text-3xl bg-[#FAF5E8] rounded-full p-1"
+   300	                          )}>
+   301	                            {isFeeding ? '🦗' : '⚖️'}
+   302	                          </div>
+   303	                          
+   304	                          <Card className="p-5">
+   305	                            <div className="flex justify-between items-start mb-3">
+   306	                              <div className="flex flex-col">
+   307	                                <span className="font-bold text-lg text-[#5C4D43]">
+   308	                                  {isFeeding ? '피딩' : '계측'}
+   309	                                </span>
+   310	                                <span className="text-sm text-[#A89E95]">{format(date, 'yyyy년 MM월 dd일 HH:mm')}</span>
+   311	                              </div>
+   312	                              <button
+   313	                                onClick={() => handleDeleteHistory(item.id, item.type as 'metric' | 'feeding')}
+   314	                                className="p-2 text-[#A89E95] hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+   315	                                title="기록 삭제"
+   316	                              >
+   317	                                <Trash2 size={20} />
+   318	                              </button>
+   319	                            </div>
+   320	                            
+   321	                            {isFeeding ? (
+   322	                              <div className="space-y-3">
+   323	                                <div className="flex flex-wrap gap-2">
+   324	                                  <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[12px] bg-[#F2FAF2] text-[#5B8F5B] text-sm font-bold border-2 border-[#C2E5C2]">
+   325	                                    {item.feed_type === 'superfood' ? '슈퍼푸드' : '곤충'}
+   326	                                  </span>
+   327	                                  <span className="inline-flex items-center px-3 py-1.5 rounded-[12px] bg-[#F2EBE1] text-[#5C4D43] text-sm font-bold border-2 border-[#E5DCD0]">
+   328	                                    {item.amount_g}g 급여
+   329	                                  </span>
+   330	                                  {item.is_dusted && (
+   331	                                    <span className="inline-flex items-center px-3 py-1.5 rounded-[12px] bg-[#FFF8EE] text-[#D98C46] text-sm font-bold border-2 border-[#FFE1A8]">
+   332	                                      칼슘 더스팅
+   333	                                    </span>
+   334	                                  )}
+   335	                                </div>
+   336	                                {item.memo && <p className="text-base text-[#7A6B60] mt-2 bg-[#FAF5E8] p-3 rounded-[16px]">{item.memo}</p>}
+   337	                              </div>
+   338	                            ) : (
+   339	                              <div className="flex gap-6 mt-3 bg-[#FAF5E8] p-4 rounded-[20px]">
+   340	                                <div className="flex flex-col">
+   341	                                  <span className="text-sm text-[#A89E95]">체중</span>
+   342	                                  <span className="font-bold text-xl">{item.weight}g</span>
+   343	                                </div>
+   344	                                <div className="flex flex-col">
+   345	                                  <span className="text-sm text-[#A89E95]">온도</span>
+   346	                                  <span className="font-bold text-xl">{item.temperature}°C</span>
+   347	                                </div>
+   348	                                <div className="flex flex-col">
+   349	                                  <span className="text-sm text-[#A89E95]">습도</span>
+   350	                                  <span className="font-bold text-xl">{item.humidity}%</span>
+   351	                                </div>
+   352	                              </div>
+   353	                            )}
+   354	                          </Card>
+   355	                        </div>
+   356	                      );
+   357	                    })}
+   358	                  </div>
+   359	                )}
+   360	              </div>
+   361	            )}
+   362	          </>
+   363	        )}
+   364	      </main>
+   365	
+   366	      {/* FABs for quick logging */}
+   367	      {activeGecko && (
+   368	        <div className="fixed bottom-32 right-4 sm:right-auto sm:left-1/2 sm:ml-[220px] flex flex-col gap-4 z-40">
+   369	          <div className="relative group">
+   370	             <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+   371	               <SpeechBubble text="계측 기록" color="bg-[#FFB067]" />
+   372	             </div>
+   373	            <button 
+   374	              onClick={() => setMetricModalOpen(true)}
+   375	              className="w-16 h-16 bg-[#FFB067] text-white rounded-[24px] border-4 border-[#FFD5A8] shadow-[0_4px_0_#D98C46] flex items-center justify-center hover:bg-[#F29F55] active:translate-y-[4px] active:shadow-none transition-all"
+   376	            >
+   377	              <span className="text-3xl">⚖️</span>
+   378	            </button>
+   379	          </div>
+   380	
+   381	          <div className="relative group">
+   382	             <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+   383	               <SpeechBubble text="피딩 기록" />
+   384	             </div>
+   385	            <button 
+   386	              onClick={() => setFeedingModalOpen(true)}
+   387	              className="w-20 h-20 bg-[#82C881] text-white rounded-[28px] border-4 border-[#A3D9A5] shadow-[0_6px_0_#629F61] flex items-center justify-center hover:bg-[#72B771] active:translate-y-[6px] active:shadow-none transition-all"
+   388	            >
+   389	              <span className="text-4xl">🦗</span>
+   390	            </button>
+   391	          </div>
+   392	        </div>
+   393	      )}
+   394	
+   395	      {/* Cute Bottom Navigation */}
+   396	      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-white border-4 border-[#F2EBE1] rounded-[32px] cute-shadow p-2 z-40 flex justify-around items-center">
+   397	        <button 
+   398	          onClick={() => setActiveTab('dashboard')}
+   399	          className={cn("flex flex-col items-center justify-center py-2 px-6 rounded-[24px] transition-all", activeTab === 'dashboard' ? "bg-[#FAF5E8] text-[#82C881]" : "text-[#A89E95] hover:bg-[#FAF5E8]/50")}
+   400	        >
+   401	          <span className="text-2xl mb-1">{activeTab === 'dashboard' ? '🏠' : '🏡'}</span>
+   402	          <span className="text-sm font-bold">대시보드</span>
+   403	        </button>
+   404	        <button 
+   405	          onClick={() => setActiveTab('history')}
+   406	          className={cn("flex flex-col items-center justify-center py-2 px-6 rounded-[24px] transition-all", activeTab === 'history' ? "bg-[#FAF5E8] text-[#82C881]" : "text-[#A89E95] hover:bg-[#FAF5E8]/50")}
+   407	        >
+   408	          <span className="text-2xl mb-1">{activeTab === 'history' ? '📖' : '📘'}</span>
+   409	          <span className="text-sm font-bold">히스토리</span>
+   410	        </button>
+   411	      </nav>
+   412	
+   413	      {/* Toast */}
+   414	      {toast && (
+   415	        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-[#FFB067] text-white font-bold px-6 py-3 rounded-[24px] border-4 border-[#FFD5A8] shadow-lg animate-in slide-in-from-top-4 fade-in">
+   416	          {toast}
+   417	        </div>
+   418	      )}
+   419	
+   420	      {/* Modals */}
+   421	      <AddFeedingModal 
+   422	        isOpen={isFeedingModalOpen} 
+   423	        onClose={() => setFeedingModalOpen(false)} 
+   424	        geckoId={activeGeckoId!}
+   425	        onSuccess={(item: HistoryItem) => {
+   426	          setHistory(prev => [item, ...prev].sort((a,b) => new Date(b.type==='metric'?b.recorded_at:b.fed_at).getTime() - new Date(a.type==='metric'?a.recorded_at:a.fed_at).getTime()));
+   427	          showToast('피딩이 기록되었습니다.');
+   428	          setFeedingModalOpen(false);
+   429	        }}
+   430	      />
+   431	
+   432	      <AddMetricModal 
+   433	        isOpen={isMetricModalOpen} 
+   434	        onClose={() => setMetricModalOpen(false)} 
+   435	        geckoId={activeGeckoId!}
+   436	        onSuccess={(item: HistoryItem) => {
+   437	          setHistory(prev => [item, ...prev].sort((a,b) => new Date(b.type==='metric'?b.recorded_at:b.fed_at).getTime() - new Date(a.type==='metric'?a.recorded_at:a.fed_at).getTime()));
+   438	          showToast('계측이 기록되었습니다.');
+   439	          setMetricModalOpen(false);
+   440	        }}
+   441	      />
+   442	
+   443	      <AddGeckoModal 
+   444	        isOpen={isAddGeckoModalOpen} 
+   445	        onClose={() => setAddGeckoModalOpen(false)} 
+   446	        onSuccess={(g: Gecko) => {
+   447	          setGeckos(prev => [...prev, g]);
+   448	          setActiveGeckoId(g.id);
+   449	          showToast('새 개체가 등록되었습니다.');
+   450	          setAddGeckoModalOpen(false);
+   451	        }}
+   452	      />
+   453	
+   454	      <Modal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} title="기록 삭제">
+   455	        <div className="space-y-6">
+   456	          <p className="text-[#5C4D43] text-lg text-center mt-4">정말로 이 기록을 삭제하시겠습니까?</p>
+   457	          <div className="flex gap-4">
+   458	            <Button variant="outline" className="flex-1" onClick={() => setItemToDelete(null)}>
+   459	              취소
+   460	            </Button>
+   461	            <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white border-red-600" onClick={confirmDelete}>
+   462	              삭제하기
+   463	            </Button>
+   464	          </div>
+   465	        </div>
+   466	      </Modal>
+   467	    </div>
+   468	  );
+   469	}
+   470	
+   471	// --- Inline Form Components ---
+   472	
+   473	function AddFeedingModal({ isOpen, onClose, geckoId, onSuccess }: any) {
+   474	  const [loading, setLoading] = useState(false);
+   475	  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+   476	    e.preventDefault();
+   477	    setLoading(true);
+   478	    const fd = new FormData(e.currentTarget);
+   479	    try {
+   480	      const item = await addFeeding({
+   481	        gecko_id: geckoId,
+   482	        fed_at: new Date(fd.get('fed_at') as string).toISOString(),
+   483	        feed_type: fd.get('feed_type') as any,
+   484	        amount_g: parseFloat(fd.get('amount_g') as string),
+   485	        is_dusted: fd.get('is_dusted') === 'on',
+   486	        memo: fd.get('memo') as string,
+   487	      });
+   488	      onSuccess(item);
+   489	    } catch (err) {
+   490	      console.error(err);
+   491	    } finally {
+   492	      setLoading(false);
+   493	    }
+   494	  };
+   495	
+   496	  return (
+   497	    <Modal isOpen={isOpen} onClose={onClose} title="피딩 기록">
+   498	      <form onSubmit={handleSubmit} className="space-y-6">
+   499	        <div>
+   500	          <Label htmlFor="fed_at">급여 일시</Label>
+   501	          <Input id="fed_at" name="fed_at" type="datetime-local" required defaultValue={format(new Date(), "yyyy-MM-dd'T'HH:mm")} />
+   502	        </div>
+   503	
+   504	        <div>
+   505	          <Label>급여 종류</Label>
+   506	          <div className="grid grid-cols-2 gap-4">
+   507	            <label className="flex flex-col items-center justify-center gap-2 p-4 border-4 border-[#F2EBE1] rounded-[24px] cursor-pointer has-[:checked]:border-[#82C881] has-[:checked]:bg-[#F2FAF2] transition-all bg-[#FAF5E8]">
+   508	              <input type="radio" name="feed_type" value="superfood" defaultChecked className="sr-only" />
+   509	              <span className="text-3xl">🥣</span>
+   510	              <span className="text-lg font-bold">슈퍼푸드</span>
+   511	            </label>
+   512	            <label className="flex flex-col items-center justify-center gap-2 p-4 border-4 border-[#F2EBE1] rounded-[24px] cursor-pointer has-[:checked]:border-[#82C881] has-[:checked]:bg-[#F2FAF2] transition-all bg-[#FAF5E8]">
+   513	              <input type="radio" name="feed_type" value="insect" className="sr-only" />
+   514	              <span className="text-3xl">🦗</span>
+   515	              <span className="text-lg font-bold">곤충</span>
+   516	            </label>
+   517	          </div>
+   518	        </div>
+   519	        
+   520	        <div>
+   521	          <Label htmlFor="amount_g">급여량 (g)</Label>
+   522	          <Input id="amount_g" name="amount_g" type="number" step="0.1" min="0" required placeholder="예: 1.5" />
+   523	        </div>
+   524	
+   525	        <div className="flex items-center justify-between p-4 border-4 border-[#F2EBE1] bg-[#FAF5E8] rounded-[24px]">
+   526	          <div>
+   527	            <Label className="mb-0">칼슘 더스팅</Label>
+   528	            <span className="text-sm text-[#A89E95]">영양제 첨가 여부</span>
+   529	          </div>
+   530	          <label className="relative inline-flex items-center cursor-pointer">
+   531	            <input type="checkbox" name="is_dusted" className="sr-only peer" />
+   532	            <div className="w-14 h-8 bg-[#E5DCD0] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#FFB067]"></div>
+   533	          </label>
+   534	        </div>
+   535	
+   536	        <div>
+   537	          <Label htmlFor="memo">메모</Label>
+   538	          <Input id="memo" name="memo" placeholder="특이사항 입력" />
+   539	        </div>
+   540	
+   541	        <Button type="submit" className="w-full mt-6" disabled={loading}>
+   542	          {loading ? '저장 중...' : '기록 저장'}
+   543	        </Button>
+   544	      </form>
+   545	    </Modal>
+   546	  );
+   547	}
+   548	
+   549	function AddMetricModal({ isOpen, onClose, geckoId, onSuccess }: any) {
+   550	  const [loading, setLoading] = useState(false);
+   551	  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+   552	    e.preventDefault();
+   553	    setLoading(true);
+   554	    const fd = new FormData(e.currentTarget);
+   555	    try {
+   556	      const item = await addMetric({
+   557	        gecko_id: geckoId,
+   558	        recorded_at: new Date(fd.get('recorded_at') as string).toISOString(),
+   559	        weight: parseFloat(fd.get('weight') as string),
+   560	        temperature: parseFloat(fd.get('temperature') as string),
+   561	        humidity: parseFloat(fd.get('humidity') as string),
+   562	      });
+   563	      onSuccess(item);
+   564	    } catch (err) {
+   565	      console.error(err);
+   566	    } finally {
+   567	      setLoading(false);
+   568	    }
+   569	  };
+   570	
+   571	  return (
+   572	    <Modal isOpen={isOpen} onClose={onClose} title="계측 기록">
+   573	      <form onSubmit={handleSubmit} className="space-y-6">
+   574	        <div>
+   575	          <Label htmlFor="recorded_at">계측 일시</Label>
+   576	          <Input id="recorded_at" name="recorded_at" type="datetime-local" required defaultValue={format(new Date(), "yyyy-MM-dd'T'HH:mm")} />
+   577	        </div>
+   578	
+   579	        <div>
+   580	          <Label htmlFor="weight">체중 (g)</Label>
+   581	          <Input id="weight" name="weight" type="number" step="0.1" required placeholder="예: 31.5" />
+   582	        </div>
+   583	        
+   584	        <div className="grid grid-cols-2 gap-4">
+   585	          <div>
+   586	            <Label htmlFor="temperature">온도 (°C)</Label>
+   587	            <Input id="temperature" name="temperature" type="number" step="0.1" required placeholder="예: 24.5" />
+   588	          </div>
+   589	          <div>
+   590	            <Label htmlFor="humidity">습도 (%)</Label>
+   591	            <Input id="humidity" name="humidity" type="number" step="1" required placeholder="예: 65" />
+   592	          </div>
+   593	        </div>
+   594	
+   595	        <Button type="submit" className="w-full mt-6" disabled={loading}>
+   596	          {loading ? '저장 중...' : '기록 저장'}
+   597	        </Button>
+   598	      </form>
+   599	    </Modal>
+   600	  );
+   601	}
+   602	
+   603	function AddGeckoModal({ isOpen, onClose, onSuccess }: any) {
+   604	  const [loading, setLoading] = useState(false);
+   605	  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+   606	    e.preventDefault();
+   607	    setLoading(true);
+   608	    const fd = new FormData(e.currentTarget);
+   609	    try {
+   610	      const gecko = await addGecko({
+   611	        name: fd.get('name') as string,
+   612	        gender: fd.get('gender') as any,
+   613	        has_tail: fd.get('has_tail') === 'true',
+   614	        birth_date: new Date(fd.get('birth_date') as string).toISOString(),
+   615	      });
+   616	      onSuccess(gecko);
+   617	    } catch (err) {
+   618	      console.error(err);
+   619	    } finally {
+   620	      setLoading(false);
+   621	    }
+   622	  };
+   623	
+   624	  return (
+   625	    <Modal isOpen={isOpen} onClose={onClose} title="개체 등록">
+   626	      <form onSubmit={handleSubmit} className="space-y-6">
+   627	        <div>
+   628	          <Label htmlFor="name">이름</Label>
+   629	          <Input id="name" name="name" required placeholder="개체 이름" />
+   630	        </div>
+   631	        
+   632	        <div className="grid grid-cols-2 gap-4">
+   633	          <div>
+   634	            <Label htmlFor="gender">성별</Label>
+   635	            <Select id="gender" name="gender" required>
+   636	              <option value="unknown">미구분</option>
+   637	              <option value="female">암컷</option>
+   638	              <option value="male">수컷</option>
+   639	            </Select>
+   640	          </div>
+   641	          <div>
+   642	            <Label htmlFor="has_tail">꼬리 유무</Label>
+   643	            <Select id="has_tail" name="has_tail" required>
+   644	              <option value="true">유미 (있음)</option>
+   645	              <option value="false">무미 (없음)</option>
+   646	            </Select>
+   647	          </div>
+   648	        </div>
+   649	
+   650	        <div>
+   651	          <Label htmlFor="birth_date">부화일 (또는 입양일)</Label>
+   652	          <Input id="birth_date" name="birth_date" type="date" required defaultValue={format(new Date(), 'yyyy-MM-dd')} />
+   653	        </div>
+   654	
+   655	        <Button type="submit" className="w-full mt-6" disabled={loading}>
+   656	          {loading ? '등록 중...' : '개체 등록'}
+   657	        </Button>
+   658	      </form>
+   659	    </Modal>
+   660	  );
+   661	}

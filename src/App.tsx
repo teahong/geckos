@@ -43,13 +43,56 @@ export default function App() {
   
   // Modals state
   const [isFeedingModalOpen, setFeedingModalOpen] = useState(false);
-  const [isMetricModalOpen, setMetricModalOpen] = useState(false);
+  const [isWeightModalOpen, setWeightModalOpen] = useState(false);
+  const [isEnvModalOpen, setEnvModalOpen] = useState(false);
   const [isAddGeckoModalOpen, setAddGeckoModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{id: string, type: 'metric' | 'feeding'} | null>(null);
 
   useEffect(() => {
     loadGeckos();
+  }, []);
+
+  // Notifications logic
+  useEffect(() => {
+    // Request permission if not granted
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
+    const checkTime = () => {
+      const now = new Date();
+      const day = now.getDay(); // 0 is Sunday
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      const seconds = now.getSeconds();
+
+      // Ensure we only trigger once per minute by checking seconds
+      if (seconds === 0) {
+        // Daily at 7:00 AM for Temperature & Humidity
+        if (hours === 7 && minutes === 0) {
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("온습도 기록 시간이에요!", { 
+              body: "우리 게코를 위해 오늘의 온도와 습도를 기록해주세요. 🌡️💧",
+              icon: "/favicon.png"
+            });
+          }
+        }
+
+        // Sunday at 7:00 PM (19:00) for Weight
+        if (day === 0 && hours === 19 && minutes === 0) {
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("체중 기록 시간이에요!", { 
+              body: "오늘은 일요일! 한 주 동안 얼마나 자랐는지 체중을 기록해주세요. ⚖️",
+              icon: "/favicon.png"
+            });
+          }
+        }
+      }
+    };
+
+    const intervalId = setInterval(checkTime, 1000);
+    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -113,9 +156,10 @@ export default function App() {
   const metrics = (Array.isArray(history) ? history : []).filter(h => h.type === 'metric') as Metric[];
   const feedings = (Array.isArray(history) ? history : []).filter(h => h.type === 'feeding') as Feeding[];
   
-  const latestMetric = metrics.length > 0 ? metrics[0] : null;
-  const previousMetric = metrics.length > 1 ? metrics[1] : null;
-  const weightDiff = latestMetric && previousMetric ? (latestMetric.weight - previousMetric.weight) : 0;
+  const latestWeightMetric = metrics.find(m => m.weight !== undefined && m.weight !== null && !isNaN(m.weight as any));
+  const previousWeightMetric = metrics.find(m => m.weight !== undefined && m.weight !== null && !isNaN(m.weight as any) && m !== latestWeightMetric);
+  const weightDiff = latestWeightMetric && previousWeightMetric && latestWeightMetric.weight && previousWeightMetric.weight ? (latestWeightMetric.weight - previousWeightMetric.weight) : 0;
+  const latestEnvMetric = metrics.find(m => m.temperature !== undefined && m.temperature !== null && !isNaN(m.temperature as any));
   
   const latestFeeding = feedings.length > 0 ? feedings[0] : null;
   const daysSinceLastFeeding = latestFeeding ? differenceInDays(new Date(), parseISO(latestFeeding.fed_at)) : null;
@@ -190,7 +234,7 @@ export default function App() {
                     </div>
                     <Card className="bg-[#FFF8EE] border-[#FFE1A8] h-full flex flex-col items-center justify-center text-center p-6 mt-4">
                       <div className="text-5xl mb-2">⚖️</div>
-                      <div className="text-3xl font-bold mb-1 text-[#5C4D43]">{latestMetric?.weight || '-'} <span className="text-xl font-normal opacity-70">g</span></div>
+                      <div className="text-3xl font-bold mb-1 text-[#5C4D43]">{latestWeightMetric?.weight || '-'} <span className="text-xl font-normal opacity-70">g</span></div>
                       {weightDiff !== 0 && (
                         <span className={cn("text-sm font-medium px-3 py-1 rounded-full mb-2", weightDiff > 0 ? "bg-[#FFE1A8] text-[#D98C46]" : "bg-[#F2EBE1] text-[#A89E95]")}>
                           {weightDiff > 0 ? '+' : ''}{weightDiff.toFixed(1)}g
@@ -227,12 +271,12 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-4 divide-x-2 divide-[#F2EBE1]">
                       <div className="flex flex-col items-center text-center px-2">
                         <div className="text-4xl mb-2">🌡️</div>
-                        <div className="text-2xl font-bold text-[#5C4D43]">{latestMetric?.temperature || '-'}°C</div>
+                        <div className="text-2xl font-bold text-[#5C4D43]">{latestEnvMetric?.temperature || '-'}°C</div>
                         <div className="text-sm text-[#A89E95] mt-1">적정 22~26°C</div>
                       </div>
                       <div className="flex flex-col items-center text-center px-2">
                         <div className="text-4xl mb-2">💧</div>
-                        <div className="text-2xl font-bold text-[#5C4D43]">{latestMetric?.humidity || '-'}%</div>
+                        <div className="text-2xl font-bold text-[#5C4D43]">{latestEnvMetric?.humidity || '-'}%</div>
                         <div className="text-sm text-[#A89E95] mt-1">적정 60~80%</div>
                       </div>
                     </div>
@@ -337,18 +381,24 @@ export default function App() {
                               </div>
                             ) : (
                               <div className="flex gap-6 mt-3 bg-[#FAF5E8] p-4 rounded-[20px]">
-                                <div className="flex flex-col">
-                                  <span className="text-sm text-[#A89E95]">체중</span>
-                                  <span className="font-bold text-xl">{item.weight}g</span>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-sm text-[#A89E95]">온도</span>
-                                  <span className="font-bold text-xl">{item.temperature}°C</span>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-sm text-[#A89E95]">습도</span>
-                                  <span className="font-bold text-xl">{item.humidity}%</span>
-                                </div>
+                                {item.weight !== undefined && item.weight !== '' && !isNaN(item.weight) && (
+                                  <div className="flex flex-col">
+                                    <span className="text-sm text-[#A89E95]">체중</span>
+                                    <span className="font-bold text-xl">{item.weight}g</span>
+                                  </div>
+                                )}
+                                {item.temperature !== undefined && item.temperature !== '' && !isNaN(item.temperature) && (
+                                  <div className="flex flex-col">
+                                    <span className="text-sm text-[#A89E95]">온도</span>
+                                    <span className="font-bold text-xl">{item.temperature}°C</span>
+                                  </div>
+                                )}
+                                {item.humidity !== undefined && item.humidity !== '' && !isNaN(item.humidity) && (
+                                  <div className="flex flex-col">
+                                    <span className="text-sm text-[#A89E95]">습도</span>
+                                    <span className="font-bold text-xl">{item.humidity}%</span>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </Card>
@@ -368,10 +418,22 @@ export default function App() {
         <div className="fixed bottom-32 right-4 sm:right-auto sm:left-1/2 sm:ml-[220px] flex flex-col gap-4 z-40">
           <div className="relative group">
              <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-               <SpeechBubble text="계측 기록" color="bg-[#FFB067]" />
+               <SpeechBubble text="온습도 기록" color="bg-[#5AB2FF]" />
              </div>
             <button 
-              onClick={() => setMetricModalOpen(true)}
+              onClick={() => setEnvModalOpen(true)}
+              className="w-16 h-16 bg-[#5AB2FF] text-white rounded-[24px] border-4 border-[#A3D2FF] shadow-[0_4px_0_#439BE8] flex items-center justify-center hover:bg-[#48A5F2] active:translate-y-[4px] active:shadow-none transition-all"
+            >
+              <span className="text-3xl">🌡️</span>
+            </button>
+          </div>
+
+          <div className="relative group">
+             <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+               <SpeechBubble text="체중 기록" color="bg-[#FFB067]" />
+             </div>
+            <button 
+              onClick={() => setWeightModalOpen(true)}
               className="w-16 h-16 bg-[#FFB067] text-white rounded-[24px] border-4 border-[#FFD5A8] shadow-[0_4px_0_#D98C46] flex items-center justify-center hover:bg-[#F29F55] active:translate-y-[4px] active:shadow-none transition-all"
             >
               <span className="text-3xl">⚖️</span>
@@ -429,14 +491,25 @@ export default function App() {
         }}
       />
 
-      <AddMetricModal 
-        isOpen={isMetricModalOpen} 
-        onClose={() => setMetricModalOpen(false)} 
+      <AddWeightModal 
+        isOpen={isWeightModalOpen} 
+        onClose={() => setWeightModalOpen(false)} 
         geckoId={activeGeckoId!}
         onSuccess={(item: HistoryItem) => {
           setHistory(prev => [item, ...prev].sort((a,b) => new Date(b.type==='metric'?b.recorded_at:b.fed_at).getTime() - new Date(a.type==='metric'?a.recorded_at:a.fed_at).getTime()));
-          showToast('계측이 기록되었습니다.');
-          setMetricModalOpen(false);
+          showToast('체중이 기록되었습니다.');
+          setWeightModalOpen(false);
+        }}
+      />
+
+      <AddEnvModal 
+        isOpen={isEnvModalOpen} 
+        onClose={() => setEnvModalOpen(false)} 
+        geckoId={activeGeckoId!}
+        onSuccess={(item: HistoryItem) => {
+          setHistory(prev => [item, ...prev].sort((a,b) => new Date(b.type==='metric'?b.recorded_at:b.fed_at).getTime() - new Date(a.type==='metric'?a.recorded_at:a.fed_at).getTime()));
+          showToast('온습도가 기록되었습니다.');
+          setEnvModalOpen(false);
         }}
       />
 
@@ -546,7 +619,7 @@ function AddFeedingModal({ isOpen, onClose, geckoId, onSuccess }: any) {
   );
 }
 
-function AddMetricModal({ isOpen, onClose, geckoId, onSuccess }: any) {
+function AddWeightModal({ isOpen, onClose, geckoId, onSuccess }: any) {
   const [loading, setLoading] = useState(false);
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -557,8 +630,7 @@ function AddMetricModal({ isOpen, onClose, geckoId, onSuccess }: any) {
         gecko_id: geckoId,
         recorded_at: new Date(fd.get('recorded_at') as string).toISOString(),
         weight: parseFloat(fd.get('weight') as string),
-        temperature: parseFloat(fd.get('temperature') as string),
-        humidity: parseFloat(fd.get('humidity') as string),
+        // Send undefined for environment metrics
       });
       onSuccess(item);
     } catch (err) {
@@ -569,7 +641,7 @@ function AddMetricModal({ isOpen, onClose, geckoId, onSuccess }: any) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="계측 기록">
+    <Modal isOpen={isOpen} onClose={onClose} title="체중 기록">
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <Label htmlFor="recorded_at">계측 일시</Label>
@@ -579,6 +651,44 @@ function AddMetricModal({ isOpen, onClose, geckoId, onSuccess }: any) {
         <div>
           <Label htmlFor="weight">체중 (g)</Label>
           <Input id="weight" name="weight" type="number" step="0.1" required placeholder="예: 31.5" />
+        </div>
+        
+        <Button type="submit" className="w-full mt-6" disabled={loading}>
+          {loading ? '저장 중...' : '기록 저장'}
+        </Button>
+      </form>
+    </Modal>
+  );
+}
+
+function AddEnvModal({ isOpen, onClose, geckoId, onSuccess }: any) {
+  const [loading, setLoading] = useState(false);
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    const fd = new FormData(e.currentTarget);
+    try {
+      const item = await addMetric({
+        gecko_id: geckoId,
+        recorded_at: new Date(fd.get('recorded_at') as string).toISOString(),
+        temperature: parseFloat(fd.get('temperature') as string),
+        humidity: parseFloat(fd.get('humidity') as string),
+        // Send undefined for weight
+      });
+      onSuccess(item);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="온습도 기록">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <Label htmlFor="recorded_at">측정 일시</Label>
+          <Input id="recorded_at" name="recorded_at" type="datetime-local" required defaultValue={format(new Date(), "yyyy-MM-dd'T'HH:mm")} />
         </div>
         
         <div className="grid grid-cols-2 gap-4">
@@ -591,7 +701,6 @@ function AddMetricModal({ isOpen, onClose, geckoId, onSuccess }: any) {
             <Input id="humidity" name="humidity" type="number" step="1" required placeholder="예: 65" />
           </div>
         </div>
-
         <Button type="submit" className="w-full mt-6" disabled={loading}>
           {loading ? '저장 중...' : '기록 저장'}
         </Button>
