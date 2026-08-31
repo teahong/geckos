@@ -177,13 +177,19 @@ export default function App() {
   const ageInMonths = activeGecko ? differenceInMonths(new Date(), parseISO(activeGecko.birth_date)) : 0;
 
   // Chart data
-  const chartData = useMemo(() => {
-    return [...metrics].reverse().map(m => ({
-      date: format(parseISO(m.recorded_at), 'MM/dd'),
-      weight: m.weight,
-      temp: m.temperature,
-      humidity: m.humidity
-    }));
+  const weightChartData = useMemo(() => {
+    return [...metrics]
+      .reverse()
+      .filter(m => {
+        const w = Number(m.weight);
+        return !isNaN(w) && w > 0;
+      })
+      .map(m => ({
+        date: format(parseISO(m.recorded_at), 'MM/dd'),
+        weight: Number(m.weight),
+        temp: m.temperature,
+        humidity: m.humidity
+      }));
   }, [metrics]);
 
   return (
@@ -299,7 +305,7 @@ export default function App() {
                 </div>
 
                 {/* Charts */}
-                {chartData.length > 0 && (
+                {weightChartData.length > 0 && (
                   <div className="space-y-6">
                     <Card className="p-4 sm:p-6">
                       <div className="mb-4">
@@ -307,7 +313,7 @@ export default function App() {
                       </div>
                       <div className="h-64 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+                          <AreaChart data={weightChartData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
                             <defs>
                               <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#82C881" stopOpacity={0.5}/>
