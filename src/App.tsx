@@ -166,10 +166,22 @@ export default function App() {
   const metrics = (Array.isArray(history) ? history : []).filter(h => h.type === 'metric') as Metric[];
   const feedings = (Array.isArray(history) ? history : []).filter(h => h.type === 'feeding') as Feeding[];
   
-  const latestWeightMetric = metrics.find(m => m.weight !== undefined && m.weight !== null && !isNaN(m.weight as any));
-  const previousWeightMetric = metrics.find(m => m.weight !== undefined && m.weight !== null && !isNaN(m.weight as any) && m !== latestWeightMetric);
-  const weightDiff = latestWeightMetric && previousWeightMetric && latestWeightMetric.weight && previousWeightMetric.weight ? (latestWeightMetric.weight - previousWeightMetric.weight) : 0;
-  const latestEnvMetric = metrics.find(m => m.temperature !== undefined && m.temperature !== null && !isNaN(m.temperature as any));
+  const validWeightMetrics = metrics.filter(m => {
+    const w = Number(m.weight);
+    return !isNaN(w) && w > 0;
+  });
+  const latestWeightMetric = validWeightMetrics[0] || null;
+  const previousWeightMetric = validWeightMetrics[1] || null;
+  const latestWeight = latestWeightMetric ? Number(latestWeightMetric.weight) : null;
+  const previousWeight = previousWeightMetric ? Number(previousWeightMetric.weight) : null;
+  const weightDiff = (latestWeight !== null && previousWeight !== null) ? (latestWeight - previousWeight) : 0;
+
+  const validEnvMetrics = metrics.filter(m => {
+    const t = Number(m.temperature);
+    const h = Number(m.humidity);
+    return (!isNaN(t) && t > 0) || (!isNaN(h) && h > 0);
+  });
+  const latestEnvMetric = validEnvMetrics[0] || null;
   
   const latestFeeding = feedings.length > 0 ? feedings[0] : null;
   const daysSinceLastFeeding = latestFeeding ? differenceInDays(new Date(), parseISO(latestFeeding.fed_at)) : null;
@@ -251,11 +263,11 @@ export default function App() {
                   {/* Weight Card */}
                   <div className="relative pt-6">
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 flex justify-center w-full">
-                      <SpeechBubble text="오늘 몸무게는?" color="bg-[#FFB067]" />
+                      <SpeechBubble text="현재 몸무게" color="bg-[#FFB067]" />
                     </div>
                     <Card className="bg-[#FFF8EE] border-[#FFE1A8] h-full flex flex-col items-center justify-center text-center p-6 mt-4">
                       <div className="text-5xl mb-2">⚖️</div>
-                      <div className="text-3xl font-bold mb-1 text-[#5C4D43]">{latestWeightMetric?.weight || '-'} <span className="text-xl font-normal opacity-70">g</span></div>
+                      <div className="text-3xl font-bold mb-1 text-[#5C4D43]">{latestWeight !== null ? latestWeight : '-'} <span className="text-xl font-normal opacity-70">g</span></div>
                       {weightDiff !== 0 && (
                         <span className={cn("text-sm font-medium px-3 py-1 rounded-full mb-2", weightDiff > 0 ? "bg-[#FFE1A8] text-[#D98C46]" : "bg-[#F2EBE1] text-[#A89E95]")}>
                           {weightDiff > 0 ? '+' : ''}{weightDiff.toFixed(1)}g
@@ -346,6 +358,9 @@ export default function App() {
                   <div className="relative border-l-4 border-[#F2EBE1] ml-4 space-y-6 pb-4">
                     {(Array.isArray(history) ? history : []).map((item, idx) => {
                       const isFeeding = item.type === 'feeding';
+                      const hasWeight = !isFeeding && Number((item as Metric).weight) > 0;
+                      const hasTemp = !isFeeding && Number((item as Metric).temperature) > 0;
+                      const hasHumidity = !isFeeding && Number((item as Metric).humidity) > 0;
                       const rawDateString = isFeeding ? (item as Feeding).fed_at : (item as Metric).recorded_at;
                       let date;
                       try {
@@ -363,14 +378,14 @@ export default function App() {
                           <div className={cn(
                             "absolute -left-[18px] top-4 text-3xl bg-[#FAF5E8] rounded-full p-1"
                           )}>
-                            {isFeeding ? '🦗' : '⚖️'}
+                            {isFeeding ? '🦗' : (hasWeight ? '⚖️' : '🌡️')}
                           </div>
                           
                           <Card className="p-5">
                             <div className="flex justify-between items-start mb-3">
                               <div className="flex flex-col">
                                 <span className="font-bold text-lg text-[#5C4D43]">
-                                  {isFeeding ? '피딩' : '계측'}
+                                  {isFeeding ? '피딩' : (hasWeight ? '체중 계측' : '온습도 측정')}
                                 </span>
                                 <span className="text-sm text-[#A89E95]">{format(date, 'yyyy년 MM월 dd일 HH:mm')}</span>
                               </div>
@@ -402,19 +417,19 @@ export default function App() {
                               </div>
                             ) : (
                               <div className="flex gap-6 mt-3 bg-[#FAF5E8] p-4 rounded-[20px]">
-                                {item.weight !== undefined && item.weight !== '' && !isNaN(item.weight) && (
+                                {hasWeight && (
                                   <div className="flex flex-col">
                                     <span className="text-sm text-[#A89E95]">체중</span>
                                     <span className="font-bold text-xl">{item.weight}g</span>
                                   </div>
                                 )}
-                                {item.temperature !== undefined && item.temperature !== '' && !isNaN(item.temperature) && (
+                                {hasTemp && (
                                   <div className="flex flex-col">
                                     <span className="text-sm text-[#A89E95]">온도</span>
                                     <span className="font-bold text-xl">{item.temperature}°C</span>
                                   </div>
                                 )}
-                                {item.humidity !== undefined && item.humidity !== '' && !isNaN(item.humidity) && (
+                                {hasHumidity && (
                                   <div className="flex flex-col">
                                     <span className="text-sm text-[#A89E95]">습도</span>
                                     <span className="font-bold text-xl">{item.humidity}%</span>
