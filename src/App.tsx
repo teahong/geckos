@@ -3,7 +3,7 @@ import { getGeckos, getHistory, addFeeding, addMetric, addGecko, deleteHistoryIt
 import { Gecko, HistoryItem, Metric, Feeding } from './types';
 import { format, differenceInDays, differenceInMonths, parseISO } from 'date-fns';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { Plus, Scale, Droplets, Thermometer, Bug, Leaf, Activity, History, ChevronDown, X, Trash2, Bell } from 'lucide-react';
+import { Plus, Scale, Droplets, Thermometer, Bug, Leaf, Activity, History, ChevronDown, X, Trash2, Bell, Info } from 'lucide-react';
 import { Card, Button, Input, Label, Select } from './components/ui';
 import { cn } from './lib/utils';
 
@@ -47,9 +47,18 @@ export default function App() {
   const [isFeedingModalOpen, setFeedingModalOpen] = useState(false);
   const [isWeightModalOpen, setWeightModalOpen] = useState(false);
   const [isEnvModalOpen, setEnvModalOpen] = useState(false);
+  const [isHumidityGuideOpen, setIsHumidityGuideOpen] = useState(false);
   const [isAddGeckoModalOpen, setAddGeckoModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{id: string, type: 'metric' | 'feeding'} | null>(null);
+  const [currentHour, setCurrentHour] = useState(new Date().getHours());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentHour(new Date().getHours());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     loadGeckos();
@@ -204,6 +213,10 @@ export default function App() {
       }));
   }, [metrics]);
 
+  const isDaytime = currentHour >= 8 && currentHour < 20; // 08:00 ~ 19:59
+  const humidityTarget = isDaytime ? '50~60%' : '70~80%';
+  const humidityLabel = isDaytime ? '주간(건조)' : '야간(분무)';
+
   return (
     <div className="min-h-screen pb-32">
       {/* Header */}
@@ -300,7 +313,14 @@ export default function App() {
                   <div className="absolute top-2 left-6">
                      <SpeechBubble text="온·습도 환경 모니터링" color="bg-[#66B2FF]" />
                   </div>
-                  <Card className="bg-white border-[#C2D9FF] p-6 mt-2">
+                  <Card className="bg-white border-[#C2D9FF] p-6 mt-2 relative">
+                    <button 
+                      onClick={() => setIsHumidityGuideOpen(true)}
+                      className="absolute top-4 right-4 p-2 bg-[#F0F4FA] rounded-full text-[#A89E95] hover:text-[#5C4D43] transition-colors"
+                      title="습도 관리 팁 보기"
+                    >
+                      <Info size={20} />
+                    </button>
                     <div className="grid grid-cols-2 gap-4 divide-x-2 divide-[#F2EBE1]">
                       <div className="flex flex-col items-center text-center px-2">
                         <div className="text-4xl mb-2">🌡️</div>
@@ -310,7 +330,7 @@ export default function App() {
                       <div className="flex flex-col items-center text-center px-2">
                         <div className="text-4xl mb-2">💧</div>
                         <div className="text-2xl font-bold text-[#5C4D43]">{latestEnvMetric?.humidity || '-'}%</div>
-                        <div className="text-sm text-[#A89E95] mt-1">적정 60~80%</div>
+                        <div className="text-sm text-[#A89E95] mt-1">{humidityLabel} {humidityTarget}</div>
                       </div>
                     </div>
                   </Card>
@@ -560,6 +580,11 @@ export default function App() {
         }}
       />
 
+      <HumidityGuideModal
+        isOpen={isHumidityGuideOpen}
+        onClose={() => setIsHumidityGuideOpen(false)}
+      />
+
       <Modal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} title="기록 삭제">
         <div className="space-y-6">
           <p className="text-[#5C4D43] text-lg text-center mt-4">정말로 이 기록을 삭제하시겠습니까?</p>
@@ -801,6 +826,47 @@ function AddGeckoModal({ isOpen, onClose, onSuccess }: any) {
           {loading ? '등록 중...' : '개체 등록'}
         </Button>
       </form>
+    </Modal>
+  );
+}
+
+function HumidityGuideModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="💧 크레스티드 게코 습도 관리 팁">
+      <div className="space-y-4 text-[#5C4D43] leading-relaxed">
+        <div className="bg-[#FAF5E8] p-4 rounded-xl border border-[#F2EBE1]">
+          <p className="font-bold text-lg mb-2">이상적인 사육 습도: 60% ~ 80%</p>
+          <p className="text-sm">하루 종일 축축하게 유지하기보다는 <span className="font-bold text-[#82C881]">자연스러운 습도 주기(건습 사이클)</span>를 만들어 주는 것이 핵심입니다.</p>
+        </div>
+        
+        <ul className="space-y-3 mt-4">
+          <li className="flex gap-3 items-start">
+            <span className="text-2xl">🌙</span>
+            <div>
+              <p className="font-bold">야간 / 분무 직후 (70%~80% 이상)</p>
+              <p className="text-sm text-[#A89E95] mt-1">주로 활동하는 밤 시간에 벽면에 미온수를 분무하여 습도를 높이고, 게코가 벽에 맺힌 물방울을 핥아 마실 수 있게 합니다.</p>
+            </div>
+          </li>
+          <li className="flex gap-3 items-start">
+            <span className="text-2xl">☀️</span>
+            <div>
+              <p className="font-bold">주간 / 건조 주기 (50%~60%)</p>
+              <p className="text-sm text-[#A89E95] mt-1">낮 동안에는 환기를 통해 사육장 내부가 마르도록 둡니다. 습도가 24시간 내내 80% 이상이면 곰팡이나 피부병, 호흡기 질환이 발생하기 쉽습니다.</p>
+            </div>
+          </li>
+          <li className="flex gap-3 items-start">
+            <span className="text-2xl">👕</span>
+            <div>
+              <p className="font-bold">탈피기 (70%~85%)</p>
+              <p className="text-sm text-[#A89E95] mt-1">탈피 징후(몸 색이 뿌옇게 변함)가 보일 때는 탈피 부전을 방지하기 위해 평소보다 살짝 높은 습도를 유지해 줍니다.</p>
+            </div>
+          </li>
+        </ul>
+
+        <div className="bg-[#FFF8EE] p-4 rounded-xl border border-[#FFE1A8] mt-6 text-sm">
+          💡 <strong>핵심 요약:</strong> 하루 1~2회(주로 늦은 오후나 저녁) 가볍게 분무해 주면서 낮에는 환기가 원활히 되도록 관리해 주세요!
+        </div>
+      </div>
     </Modal>
   );
 }
